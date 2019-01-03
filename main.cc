@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "git.h"
+#include "version.h"
 
 int main() {
     // Demo that our macros work.

@@ -6,7 +6,7 @@ include(git_watcher.cmake)
 
 # Create a demo executable.
 # Note that one of the dependencies is the configured git header.
-add_executable(demo git.h main.cc)
+add_executable(demo  main.cc)
 
 # Indicate that the demo depends on the AlwaysCheckGit target.
 # Whenever we try to build demo, we'll first check the repo for any changes.

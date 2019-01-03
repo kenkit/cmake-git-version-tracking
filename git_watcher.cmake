@@ -21,7 +21,7 @@
 #     consider that it can run in one of two scopes.
 
 if(NOT DEFINED post_configure_file)
-    set(post_configure_file "${CMAKE_CURRENT_SOURCE_DIR}/git.h")
+    set(post_configure_file "${CMAKE_CURRENT_SOURCE_DIR}/version.h")
 endif()
 if(NOT DEFINED pre_configure_file)
     set(pre_configure_file "${post_configure_file}.in")
@@ -45,8 +45,12 @@ function(GitStateChangedAction)
     LIST(GET CONTENT 0 HELP_STRING)
     LIST(GET CONTENT 1 GIT_RETRIEVED_STATE)
     LIST(GET CONTENT 2 GIT_HEAD_SHA1)
-    LIST(GET CONTENT 3 GIT_IS_DIRTY)
-    LIST(GET CONTENT 4 PROJECT_VERSION)
+    LIST(GET CONTENT 3 COMMIT_AUTHOR)
+    LIST(GET CONTENT 4 COMMIT_MESSAGE)
+    LIST(GET CONTENT 5 COMMIT_DATE)
+    LIST(GET CONTENT 6 GIT_IS_DIRTY)
+    LIST(GET CONTENT 7 PROJECT_VERSION)
+ 
     # Configure the file.
     configure_file("${pre_configure_file}" "${post_configure_file}" @ONLY)
 endfunction()
@@ -132,12 +136,15 @@ function(GetGitStateSimple _working_dir _state)
     GetGitState("${_working_dir}" hash dirty success)
 
     # We're going to construct a variable that represents the state of the repo.
-    set(project_version "1.0")
+    set(project_version "1.0.1")
+    set(commit_message "Made by stormy")
+    set(commit_date "1/2/34 2018")
+    set(commit_author "kkituyi@yahoo.com ")
     set(help_string "\
 This is a git state file. \
 The next three lines are a success code, SHA1 hash, \
 and whether or not there were uncommitted changes.")
-    set(${_state} "${help_string}\n${success}\n${hash}\n${dirty}\n${project_version}" PARENT_SCOPE)
+    set(${_state} "${help_string}\n${success}\n${hash}\n${commit_author}\n${commit_message}\n${commit_date}\n${dirty}\n${project_version}" PARENT_SCOPE)
 endfunction()
 
 
