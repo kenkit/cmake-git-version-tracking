@@ -46,6 +46,7 @@ function(GitStateChangedAction)
     LIST(GET CONTENT 1 GIT_RETRIEVED_STATE)
     LIST(GET CONTENT 2 GIT_HEAD_SHA1)
     LIST(GET CONTENT 3 GIT_IS_DIRTY)
+    LIST(GET CONTENT 4 PROJECT_VERSION)
     # Configure the file.
     configure_file("${pre_configure_file}" "${post_configure_file}" @ONLY)
 endfunction()
@@ -131,11 +132,12 @@ function(GetGitStateSimple _working_dir _state)
     GetGitState("${_working_dir}" hash dirty success)
 
     # We're going to construct a variable that represents the state of the repo.
+    set(project_version "1.0")
     set(help_string "\
 This is a git state file. \
 The next three lines are a success code, SHA1 hash, \
 and whether or not there were uncommitted changes.")
-    set(${_state} "${help_string}\n${success}\n${hash}\n${dirty}" PARENT_SCOPE)
+    set(${_state} "${help_string}\n${success}\n${hash}\n${dirty}\n${project_version}" PARENT_SCOPE)
 endfunction()
 
 

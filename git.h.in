@@ -10,4 +10,7 @@
 // Whether or not there were uncommited changes present.
 #define GIT_IS_DIRTY @GIT_IS_DIRTY@
 
+// PROJECT_VERSION
+#define PROJECT_VERSION @PROJECT_VERSION@
+
 
