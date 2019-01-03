@@ -19,7 +19,321 @@
 #       2. Build time scope (called via CMake -P)
 #     If you see something odd (e.g. the NOT DEFINED clauses),
 #     consider that it can run in one of two scopes.
+cmake_minimum_required(VERSION 3.1)
 
+if (DEFINED JSonParserGuard)
+    return()
+endif()
+
+set(JSonParserGuard yes)
+
+macro(sbeParseJson prefix jsonString)
+    cmake_policy(PUSH)
+
+    set(json_string "${${jsonString}}")
+    string(LENGTH "${json_string}" json_jsonLen)
+    set(json_index 0)
+    set(json_AllVariables ${prefix})
+    set(json_ArrayNestingLevel 0)
+    set(json_MaxArrayNestingLevel 0)
+
+    _sbeParse(${prefix})
+    
+    unset(json_index)
+    unset(json_AllVariables)
+    unset(json_jsonLen)
+    unset(json_string)
+    unset(json_value)
+    unset(json_inValue)    
+    unset(json_name)
+    unset(json_inName)
+    unset(json_newPrefix)
+    unset(json_reservedWord)
+    unset(json_arrayIndex)
+    unset(json_char)
+    unset(json_end)
+    unset(json_ArrayNestingLevel)
+    foreach(json_nestingLevel RANGE ${json_MaxArrayNestingLevel})
+        unset(json_${json_nestingLevel}_arrayIndex)
+    endforeach()
+    unset(json_nestingLevel)
+    unset(json_MaxArrayNestingLevel)
+    
+    cmake_policy(POP)
+endmacro()
+
+macro(sbeClearJson prefix)
+    foreach(json_var ${${prefix}})
+        unset(${json_var})
+    endforeach()
+    
+    unset(${prefix})
+    unset(json_var)
+endmacro()
+
+macro(sbePrintJson prefix)
+    foreach(json_var ${${prefix}})
+        message("${json_var} = ${${json_var}}")
+    endforeach()
+endmacro()
+
+macro(_sbeParse prefix)
+
+    while(${json_index} LESS ${json_jsonLen})
+        string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+        
+        if("\"" STREQUAL "${json_char}")    
+            _sbeParseNameValue(${prefix})
+        elseif("{" STREQUAL "${json_char}")
+            _sbeMoveToNextNonEmptyCharacter()
+            _sbeParseObject(${prefix})
+        elseif("[" STREQUAL "${json_char}")
+            _sbeMoveToNextNonEmptyCharacter()
+            _sbeParseArray(${prefix})
+        endif()
+
+        if(${json_index} LESS ${json_jsonLen})
+            string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+        else()
+            break()
+        endif()
+
+        if ("}" STREQUAL "${json_char}" OR "]" STREQUAL "${json_char}")
+            break()
+        endif()
+        
+        _sbeMoveToNextNonEmptyCharacter()
+    endwhile()    
+endmacro()
+
+macro(_sbeParseNameValue prefix)
+    set(json_name "")
+    set(json_inName no)
+
+    while(${json_index} LESS ${json_jsonLen})
+        string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+        
+        # check if name ends
+        if("\"" STREQUAL "${json_char}" AND json_inName)
+            set(json_inName no)
+            _sbeMoveToNextNonEmptyCharacter()
+            if(NOT ${json_index} LESS ${json_jsonLen})
+                break()
+            endif()                
+            string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+            set(json_newPrefix ${prefix}.${json_name})
+            set(json_name "")
+            
+            if(":" STREQUAL "${json_char}")
+                _sbeMoveToNextNonEmptyCharacter()
+                if(NOT ${json_index} LESS ${json_jsonLen})
+                    break()
+                endif()                
+                string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+
+                if("\"" STREQUAL "${json_char}")    
+                    _sbeParseValue(${json_newPrefix})
+                    break()
+                elseif("{" STREQUAL "${json_char}")
+                    _sbeMoveToNextNonEmptyCharacter()
+                    _sbeParseObject(${json_newPrefix})
+                    break()
+                elseif("[" STREQUAL "${json_char}")
+                    _sbeMoveToNextNonEmptyCharacter()
+                    _sbeParseArray(${json_newPrefix})
+                    break()
+                else()
+                    # reserved word starts
+                    _sbeParseReservedWord(${json_newPrefix})
+                    break()
+                endif()
+            else()
+                # name without value
+                list(APPEND ${json_AllVariables} ${json_newPrefix})
+                set(${json_newPrefix} "")
+                break()            
+            endif()           
+        endif()
+
+        if(json_inName)
+            # remove escapes
+            if("\\" STREQUAL "${json_char}")
+                math(EXPR json_index "${json_index} + 1")
+                if(NOT ${json_index} LESS ${json_jsonLen})
+                    break()
+                endif()                
+                string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+            endif()
+        
+            set(json_name "${json_name}${json_char}")
+        endif()
+        
+        # check if name starts
+        if("\"" STREQUAL "${json_char}" AND NOT json_inName)
+            set(json_inName yes)
+        endif()
+       
+        _sbeMoveToNextNonEmptyCharacter()
+    endwhile()    
+endmacro()
+
+macro(_sbeParseReservedWord prefix)
+    set(json_reservedWord "")
+    set(json_end no)
+    while(${json_index} LESS ${json_jsonLen} AND NOT json_end)
+        string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+        
+        if("," STREQUAL "${json_char}" OR "}" STREQUAL "${json_char}" OR "]" STREQUAL "${json_char}")
+            set(json_end yes)
+        else()
+            set(json_reservedWord "${json_reservedWord}${json_char}")
+            math(EXPR json_index "${json_index} + 1")
+        endif()
+    endwhile()
+
+    list(APPEND ${json_AllVariables} ${prefix})
+    string(STRIP  "${json_reservedWord}" json_reservedWord)
+    set(${prefix} ${json_reservedWord})
+endmacro()
+
+macro(_sbeParseValue prefix)
+    cmake_policy(SET CMP0054 NEW) # turn off implicit expansions in if statement
+    
+    set(json_value "")
+    set(json_inValue no)
+    
+    while(${json_index} LESS ${json_jsonLen})
+        # fast path for copying strings
+        if (json_inValue)
+            # attempt to gobble up to 128 bytes of string
+            string(SUBSTRING "${json_string}" ${json_index} 128 try_gobble)
+            # consume a piece of string we can just straight copy before encountering \ or "
+            string(REGEX MATCH "^[^\"\\\\]+" simple_copy "${try_gobble}")
+            string(CONCAT json_value "${json_value}" "${simple_copy}")
+            string(LENGTH "${simple_copy}" copy_length)
+            math(EXPR json_index "${json_index} + ${copy_length}")
+        endif()
+
+        string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+
+        # check if json_value ends, it is ended by "
+        if("\"" STREQUAL "${json_char}" AND json_inValue)
+            set(json_inValue no)
+            
+            set(${prefix} ${json_value})
+            list(APPEND ${json_AllVariables} ${prefix})
+            _sbeMoveToNextNonEmptyCharacter()
+            break()
+        endif()
+                
+        if(json_inValue)
+             # if " is escaped consume
+            if("\\" STREQUAL "${json_char}")
+                math(EXPR json_index "${json_index} + 1")
+                if(NOT ${json_index} LESS ${json_jsonLen})
+                    break()
+                endif()                
+                string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+                if(NOT "\"" STREQUAL "${json_char}")
+                    # if it is not " then copy also escape character
+                    set(json_char "\\${json_char}")
+                endif()
+            endif()      
+              
+            _sbeAddEscapedCharacter("${json_char}")
+        endif()
+        
+        # check if value starts
+        if("\"" STREQUAL "${json_char}" AND NOT json_inValue)
+            set(json_inValue yes)
+        endif()
+        
+        math(EXPR json_index "${json_index} + 1")
+    endwhile()
+endmacro()
+
+macro(_sbeAddEscapedCharacter char)
+    string(CONCAT json_value "${json_value}" "${char}")
+endmacro()
+
+macro(_sbeParseObject prefix)
+    _sbeParse(${prefix})
+    _sbeMoveToNextNonEmptyCharacter()
+endmacro()
+
+macro(_sbeParseArray prefix)
+    math(EXPR json_ArrayNestingLevel "${json_ArrayNestingLevel} + 1")
+    set(json_${json_ArrayNestingLevel}_arrayIndex 0)
+
+    set(${prefix} "")
+    list(APPEND ${json_AllVariables} ${prefix})
+
+    while(${json_index} LESS ${json_jsonLen})
+        string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+
+        if("\"" STREQUAL "${json_char}")
+            # simple value
+            list(APPEND ${prefix} ${json_${json_ArrayNestingLevel}_arrayIndex})
+            _sbeParseValue(${prefix}_${json_${json_ArrayNestingLevel}_arrayIndex})
+        elseif("{" STREQUAL "${json_char}")
+            # object
+            _sbeMoveToNextNonEmptyCharacter()
+            list(APPEND ${prefix} ${json_${json_ArrayNestingLevel}_arrayIndex})
+            _sbeParseObject(${prefix}_${json_${json_ArrayNestingLevel}_arrayIndex})
+        else()
+            list(APPEND ${prefix} ${json_${json_ArrayNestingLevel}_arrayIndex})
+            _sbeParseReservedWord(${prefix}_${json_${json_ArrayNestingLevel}_arrayIndex})
+        endif()
+        
+        if(NOT ${json_index} LESS ${json_jsonLen})
+            break()
+        endif()
+        
+        string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+        
+        if("]" STREQUAL "${json_char}")
+            _sbeMoveToNextNonEmptyCharacter()
+            break()
+        elseif("," STREQUAL "${json_char}")
+            math(EXPR json_${json_ArrayNestingLevel}_arrayIndex "${json_${json_ArrayNestingLevel}_arrayIndex} + 1")            
+        endif()
+                
+        _sbeMoveToNextNonEmptyCharacter()
+    endwhile()    
+    
+    if(${json_MaxArrayNestingLevel} LESS ${json_ArrayNestingLevel})
+        set(json_MaxArrayNestingLevel ${json_ArrayNestingLevel})
+    endif()
+    math(EXPR json_ArrayNestingLevel "${json_ArrayNestingLevel} - 1")
+endmacro()
+
+macro(_sbeMoveToNextNonEmptyCharacter)
+    math(EXPR json_index "${json_index} + 1")
+    if(${json_index} LESS ${json_jsonLen})
+        string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+        while(${json_char} MATCHES "[ \t\n\r]" AND ${json_index} LESS ${json_jsonLen})
+            math(EXPR json_index "${json_index} + 1")
+            string(SUBSTRING "${json_string}" ${json_index} 1 json_char)
+        endwhile()
+    endif()
+endmacro()
+
+set(Downloaded_JS TRUE)
+
+if(Downloaded_JS)
+        file(DOWNLOAD "https://api.github.com/repos/kenkit/ogre/releases/latest" "${CMAKE_SOURCE_DIR}/build/json_release.json" SHOW_PROGRESS STATUS status)
+        file(READ "${CMAKE_SOURCE_DIR}/build/json_release.json" JSON_OUTPUT)
+        sbeParseJson(parsed_json JSON_OUTPUT)
+       
+    if(NOT status_code EQUAL 0)
+        message(WARN "error: downloading failed
+        status_code: ${status_code}
+        status_string: ${status_string}")
+        set(project_version "Unknown [offline build]")
+    else()
+       set(project_version ${parsed_json.tag_name})
+    endif()     
+endif()
 if(NOT DEFINED post_configure_file)
     set(post_configure_file "${CMAKE_CURRENT_SOURCE_DIR}/version.h")
 endif()
@@ -134,11 +448,9 @@ function(GetGitStateSimple _working_dir _state)
 
     # Get the current state of the repo where the current list resides.
     GetGitState("${_working_dir}" hash dirty success)
-
     # We're going to construct a variable that represents the state of the repo.
-    set(project_version "1.0.1")
     set(commit_message "Made by stormy")
-    set(commit_date "1/2/34 2018")
+    set(commit_date "1/2/34/2018")
     set(commit_author "kkituyi@yahoo.com ")
     set(help_string "\
 This is a git state file. \
