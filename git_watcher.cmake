@@ -325,13 +325,21 @@ if(Downloaded_JS)
         file(READ "${CMAKE_SOURCE_DIR}/build/json_release.json" JSON_OUTPUT)
         sbeParseJson(parsed_json JSON_OUTPUT)
        
-    if(NOT status_code EQUAL 0)
+    if(NOT status EQUAL 0)
         message(WARN "error: downloading failed
         status_code: ${status_code}
         status_string: ${status_string}")
         set(project_version "Unknown [offline build]")
     else()
        set(project_version ${parsed_json.tag_name})
+       string(REPLACE "." ";" VERSION_LIST ${project_version})
+        list(GET VERSION_LIST 0 MY_PROGRAM_VERSION_MAJOR)
+        list(GET VERSION_LIST 1 MY_PROGRAM_VERSION_MINOR)
+        list(GET VERSION_LIST 2 MY_PROGRAM_VERSION_PATCH)
+        MATH(EXPR MY_PROGRAM_VERSION_PATCH "${MY_PROGRAM_VERSION_PATCH}+1")
+        message("Version major:${MY_PROGRAM_VERSION_MAJOR} minor:${MY_PROGRAM_VERSION_MINOR} patch:${MY_PROGRAM_VERSION_PATCH}")
+        set(project_version "${MY_PROGRAM_VERSION_MAJOR}.${MY_PROGRAM_VERSION_MINOR}.${MY_PROGRAM_VERSION_PATCH}")
+        message("Current build:${project_version}")
     endif()     
 endif()
 if(NOT DEFINED post_configure_file)
@@ -449,9 +457,43 @@ function(GetGitStateSimple _working_dir _state)
     # Get the current state of the repo where the current list resides.
     GetGitState("${_working_dir}" hash dirty success)
     # We're going to construct a variable that represents the state of the repo.
-    set(commit_message "Made by stormy")
-    set(commit_date "1/2/34/2018")
-    set(commit_author "kkituyi@yahoo.com ")
+   
+    
+	execute_process(COMMAND
+		"${GIT_EXECUTABLE}"  log  --format=%ci -n1
+		WORKING_DIRECTORY "${_working_dir}"
+		RESULT_VARIABLE res
+		OUTPUT_VARIABLE commit_date
+		ERROR_QUIET
+		OUTPUT_STRIP_TRAILING_WHITESPACE)
+	if(NOT res EQUAL 0)
+        message("Failed to get commit date")
+		return()
+	endif()
+	execute_process(COMMAND
+		"${GIT_EXECUTABLE}" log --format=%B -n1
+		WORKING_DIRECTORY "${_working_dir}"
+		RESULT_VARIABLE res
+		OUTPUT_VARIABLE commit_message
+		ERROR_QUIET
+		OUTPUT_STRIP_TRAILING_WHITESPACE)
+	if(NOT res EQUAL 0)
+        message("Failed to get commit message")
+		return()
+	endif()
+
+	execute_process(COMMAND
+		"${GIT_EXECUTABLE}" log --format=%ae -n1
+		WORKING_DIRECTORY "${_working_dir}"
+		RESULT_VARIABLE res
+		OUTPUT_VARIABLE commit_author
+		ERROR_QUIET
+		OUTPUT_STRIP_TRAILING_WHITESPACE)
+	if(NOT res EQUAL 0)
+        message("Failed to get commit author")
+		return()
+	endif()
+
     set(help_string "\
 This is a git state file. \
 The next three lines are a success code, SHA1 hash, \
